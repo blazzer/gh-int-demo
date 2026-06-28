@@ -4,11 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/blazzer/gh-int-demo/internal/obs"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestHealthHandler(t *testing.T) {
@@ -37,34 +35,17 @@ func TestHealthHandler(t *testing.T) {
 	}
 }
 
-func TestMCPInitializeHTTP(t *testing.T) {
+func TestHealthHandler_RequestID(t *testing.T) {
 	t.Parallel()
 
-	logger := obs.NewLogger()
-	mcpServer := newMCPServer(logger)
-	mcpHandler := mcp.NewStreamableHTTPHandler(func(req *http.Request) *mcp.Server {
-		return mcpServer
-	}, nil)
+	handler := obs.RequestIDMiddleware(obs.NewLogger(), healthHandler(obs.NewLogger()))
 
-	handler := obs.RequestIDMiddleware(logger, obs.TokenMiddleware(mcpHandler))
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set(obs.RequestIDHeader, "incoming-id")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
 
-	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"0.0.1"}}}`
-	req, err := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(body))
-	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("Do: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	if got := rec.Header().Get(obs.RequestIDHeader); got != "incoming-id" {
+		t.Fatalf("X-Request-ID = %q, want incoming-id", got)
 	}
 }

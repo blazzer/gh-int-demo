@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"expvar"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/blazzer/gh-int-demo/internal/auth"
 	"github.com/blazzer/gh-int-demo/internal/github"
 	"github.com/blazzer/gh-int-demo/internal/mcptools"
 	"github.com/blazzer/gh-int-demo/internal/obs"
@@ -56,6 +58,14 @@ func main() {
 }
 
 func newMCPServer(logger *slog.Logger) *mcp.Server {
+	var ghClient github.Lister
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		ghClient = github.NewClient(token)
+	}
+	return newMCPServerWithClients(logger, ghClient, github.DefaultClientFactory())
+}
+
+func newMCPServerWithClients(logger *slog.Logger, defaultClient github.Lister, factory github.ClientFactory) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "gh-int-demo",
 		Version: version,
@@ -63,6 +73,7 @@ func newMCPServer(logger *slog.Logger) *mcp.Server {
 
 	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			obs.IncMCPRequest(method)
 			reqLogger := obs.LoggerFromContext(ctx)
 			if reqLogger == nil {
 				reqLogger = logger
@@ -72,11 +83,8 @@ func newMCPServer(logger *slog.Logger) *mcp.Server {
 		}
 	})
 
-	var ghClient github.Lister
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-		ghClient = github.NewClient(token)
-	}
-	mcptools.RegisterListRepositories(server, ghClient)
+	mcptools.RegisterListRepositories(server, defaultClient, factory)
+	mcptools.RegisterGetRepository(server, defaultClient, factory)
 	return server
 }
 
@@ -85,9 +93,14 @@ func runHTTPServer(ctx context.Context, logger *slog.Logger, mcpServer *mcp.Serv
 		return mcpServer
 	}, nil)
 
+	mcpStack := obs.RequestIDMiddleware(logger, obs.TokenMiddleware(auth.Middleware(mcpHandler)))
+
 	mux := http.NewServeMux()
-	mux.Handle("/healthz", healthHandler(logger))
-	mux.Handle("/mcp", obs.RequestIDMiddleware(logger, obs.TokenMiddleware(mcpHandler)))
+	mux.Handle("/healthz", obs.RequestIDMiddleware(logger, healthHandler(logger)))
+	mux.Handle("/mcp", mcpStack)
+	if os.Getenv("ENABLE_DEBUG_VARS") == "1" {
+		mux.Handle("/debug/vars", expvar.Handler())
+	}
 
 	httpServer := &http.Server{
 		Addr:              *addr,
@@ -102,7 +115,7 @@ func runHTTPServer(ctx context.Context, logger *slog.Logger, mcpServer *mcp.Serv
 		_ = httpServer.Shutdown(shutdownCtx)
 	}()
 
-	logger.Info("server listening", "addr", *addr, "transport", "http")
+	logger.Info("server listening", "addr", *addr, "transport", "http", "auth_mode", auth.Mode())
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}
@@ -111,7 +124,7 @@ func runHTTPServer(ctx context.Context, logger *slog.Logger, mcpServer *mcp.Serv
 
 func healthHandler(logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		logger.Info("health check", "request_id", r.Header.Get(obs.RequestIDHeader))
+		logger.Info("health check", "request_id", obs.RequestIDFromContext(r.Context()))
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{

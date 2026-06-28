@@ -49,6 +49,11 @@ func RequestIDFromContext(ctx context.Context) string {
 	return ""
 }
 
+// WithRequestID stores a request ID in context (used in tests and outbound calls).
+func WithRequestID(ctx context.Context, requestID string) context.Context {
+	return context.WithValue(ctx, requestIDKey{}, requestID)
+}
+
 // WithGitHubToken stores a GitHub token in context.
 func WithGitHubToken(ctx context.Context, token string) context.Context {
 	return context.WithValue(ctx, githubTokenKey{}, token)

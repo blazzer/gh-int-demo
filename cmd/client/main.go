@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/blazzer/gh-int-demo/internal/httpx"
 	"github.com/blazzer/gh-int-demo/internal/mcptools"
 	"github.com/blazzer/gh-int-demo/internal/oauth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -18,7 +20,7 @@ import (
 
 var (
 	serverURL = flag.String("server", "http://localhost:8080/mcp", "MCP server URL")
-	scope     = flag.String("scope", "repo", "GitHub OAuth scope")
+	scope     = flag.String("scope", "public_repo", "GitHub OAuth scope (use repo for private repos)")
 	clientID  = flag.String("client-id", "", "GitHub OAuth client ID (or set GITHUB_CLIENT_ID)")
 )
 
@@ -36,6 +38,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Never log the token value.
 	if err := writeTokenCache(token); err != nil {
 		logger.Warn("failed to cache token locally", "error", err)
 	}
@@ -49,7 +52,7 @@ func main() {
 	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
 		Endpoint: *serverURL,
 		HTTPClient: &http.Client{
-			Transport: bearerRoundTripper{token: token, base: http.DefaultTransport},
+			Transport: bearerRoundTripper{token: token, base: httpx.DefaultTransport()},
 		},
 	}, nil)
 	if err != nil {
@@ -84,7 +87,7 @@ func (rt bearerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	cloned.Header.Set("Authorization", "Bearer "+rt.token)
 	base := rt.base
 	if base == nil {
-		base = http.DefaultTransport
+		base = httpx.DefaultTransport()
 	}
 	return base.RoundTrip(cloned)
 }
@@ -99,7 +102,7 @@ func textContent(result *mcp.CallToolResult) string {
 	return fmt.Sprintf("%v", result.Content[0])
 }
 
-func printRepositories(out *os.File, payload string) error {
+func printRepositories(out io.Writer, payload string) error {
 	var repos []mcptools.RepoSummary
 	if err := json.Unmarshal([]byte(payload), &repos); err != nil {
 		return fmt.Errorf("decode repositories: %w", err)
@@ -112,14 +115,4 @@ func printRepositories(out *os.File, payload string) error {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", repo.Name, repo.Visibility, desc, repo.URL)
 	}
 	return w.Flush()
-}
-
-func writeTokenCache(token string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	path := home + string(os.PathSeparator) + ".gh-int-demo-token"
-	content := "# demo only; do not commit\n" + token + "\n"
-	return os.WriteFile(path, []byte(content), 0o600)
 }

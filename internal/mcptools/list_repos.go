@@ -3,6 +3,7 @@ package mcptools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/blazzer/gh-int-demo/internal/github"
@@ -19,26 +20,40 @@ type RepoSummary struct {
 }
 
 // RegisterListRepositories adds the list_repositories tool to the MCP server.
-func RegisterListRepositories(server *mcp.Server, defaultClient github.Lister) {
+func RegisterListRepositories(server *mcp.Server, defaultClient github.Lister, factory github.ClientFactory) {
+	if factory == nil {
+		factory = github.DefaultClientFactory()
+	}
+
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_repositories",
 		Description: "List repositories for the authenticated GitHub user",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
 		logger := obs.LoggerFromContext(ctx)
-		logger.Info("list_repositories invoked", "request_id", obs.RequestIDFromContext(ctx))
+		requestID := obs.RequestIDFromContext(ctx)
 
-		lister := defaultClient
-		if token := obs.GitHubTokenFromContext(ctx); token != "" {
-			lister = github.NewClient(token)
-		}
+		lister, authSource := resolveLister(ctx, defaultClient, factory)
+		logger.Info("list_repositories invoked", "request_id", requestID, "auth_source", authSource)
+
 		if lister == nil {
-			return toolError("missing GitHub token; set GITHUB_TOKEN or pass Authorization: Bearer")
+			return toolErrorResult(ToolError{
+				Code:      CodeInternal,
+				Message:   "missing GitHub token; set GITHUB_TOKEN or pass Authorization: Bearer",
+				Retryable: false,
+			}), nil, nil
 		}
 
 		repos, err := lister.ListRepositories(ctx)
 		if err != nil {
-			logger.Error("github list repositories failed", "error", err)
-			return toolError(fmt.Sprintf("github API error: %v", err))
+			toolErr := toolErrorFrom(err)
+			logger.Error("github list repositories failed",
+				"error", err,
+				"error_code", toolErr.Code,
+				"retryable", toolErr.Retryable,
+				"request_id", requestID,
+				"auth_source", authSource,
+			)
+			return toolErrorResult(toolErr), nil, nil
 		}
 
 		summaries := make([]RepoSummary, 0, len(repos))
@@ -53,7 +68,11 @@ func RegisterListRepositories(server *mcp.Server, defaultClient github.Lister) {
 
 		payload, err := json.MarshalIndent(summaries, "", "  ")
 		if err != nil {
-			return toolError(fmt.Sprintf("encode result: %v", err))
+			return toolErrorResult(ToolError{
+				Code:      CodeInternal,
+				Message:   fmt.Sprintf("encode result: %v", err),
+				Retryable: false,
+			}), nil, nil
 		}
 
 		return &mcp.CallToolResult{
@@ -64,11 +83,30 @@ func RegisterListRepositories(server *mcp.Server, defaultClient github.Lister) {
 	})
 }
 
-func toolError(message string) (*mcp.CallToolResult, any, error) {
+func toolErrorFrom(err error) ToolError {
+	if errors.Is(err, github.ErrUnauthorized) {
+		return ToolError{Code: CodeUnauthorized, Message: err.Error(), Retryable: false}
+	}
+	if errors.Is(err, github.ErrRateLimited) {
+		return ToolError{Code: CodeRateLimited, Message: err.Error(), Retryable: true}
+	}
+	var apiErr *github.APIError
+	if errors.As(err, &apiErr) {
+		return ToolError{
+			Code:      CodeUpstream,
+			Message:   apiErr.Error(),
+			Retryable: apiErr.Status >= 500,
+		}
+	}
+	return ToolError{Code: CodeInternal, Message: err.Error(), Retryable: false}
+}
+
+func toolErrorResult(toolErr ToolError) *mcp.CallToolResult {
+	payload, _ := json.Marshal(toolErr)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: message},
+			&mcp.TextContent{Text: string(payload)},
 		},
 		IsError: true,
-	}, nil, nil
+	}
 }

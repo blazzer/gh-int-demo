@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/blazzer/gh-int-demo/internal/httpx"
 )
 
 const (
@@ -40,7 +42,7 @@ func DeviceFlow(ctx context.Context, cfg Config) (string, error) {
 		cfg.Scope = "repo"
 	}
 	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = http.DefaultClient
+		cfg.HTTPClient = httpx.DefaultClient()
 	}
 	if cfg.DeviceURL == "" {
 		cfg.DeviceURL = deviceCodeURL

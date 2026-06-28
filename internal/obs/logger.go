@@ -1,6 +1,7 @@
 package obs
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"os"
@@ -13,6 +14,15 @@ func NewLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
+}
+
+// NewBufferLogger returns a JSON logger and buffer for test log assertions.
+func NewBufferLogger() (*slog.Logger, *bytes.Buffer) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	return logger, &buf
 }
 
 // WithLogger attaches a logger to the context.

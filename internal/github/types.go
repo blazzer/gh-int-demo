@@ -19,6 +19,9 @@ type Lister interface {
 	ListRepositories(ctx context.Context) ([]Repository, error)
 }
 
+// ClientFactory creates a Lister for the given GitHub token.
+type ClientFactory func(token string) Lister
+
 // ErrUnauthorized indicates the GitHub token is invalid or expired.
 var ErrUnauthorized = errors.New("github: unauthorized")
 

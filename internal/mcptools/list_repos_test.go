@@ -24,6 +24,29 @@ func (m *mockLister) ListRepositories(ctx context.Context) ([]github.Repository,
 	return m.repos, nil
 }
 
+func TestListRepositoriesTool_ServerDefaultSource(t *testing.T) {
+	t.Parallel()
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.0.1"}, nil)
+	mcptools.RegisterListRepositories(server, &mockLister{
+		repos: []github.Repository{
+			{Name: "demo", Visibility: "public", Description: "hello", HTMLURL: "https://github.com/u/demo"},
+		},
+	}, func(token string) github.Lister {
+		t.Fatal("factory should not be called when using server default lister")
+		return nil
+	})
+
+	ctx := obs.WithLogger(context.Background(), obs.NewLogger())
+	result, err := callListRepositories(ctx, server)
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected tool error: %+v", result.Content)
+	}
+}
+
 func TestListRepositoriesTool(t *testing.T) {
 	t.Parallel()
 
@@ -32,7 +55,7 @@ func TestListRepositoriesTool(t *testing.T) {
 		repos: []github.Repository{
 			{Name: "demo", Visibility: "public", Description: "hello", HTMLURL: "https://github.com/u/demo"},
 		},
-	})
+	}, nil)
 
 	ctx := obs.WithLogger(context.Background(), obs.NewLogger())
 	result, err := callListRepositories(ctx, server)
@@ -57,7 +80,7 @@ func TestListRepositoriesTool_GitHubError(t *testing.T) {
 	t.Parallel()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.0.1"}, nil)
-	mcptools.RegisterListRepositories(server, &mockLister{err: errors.New("boom")})
+	mcptools.RegisterListRepositories(server, &mockLister{err: errors.New("boom")}, nil)
 
 	result, err := callListRepositories(context.Background(), server)
 	if err != nil {
@@ -65,6 +88,29 @@ func TestListRepositoriesTool_GitHubError(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatal("expected tool error result")
+	}
+}
+
+func TestListRepositoriesTool_UnauthorizedErrorCode(t *testing.T) {
+	t.Parallel()
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.0.1"}, nil)
+	mcptools.RegisterListRepositories(server, &mockLister{err: github.ErrUnauthorized}, nil)
+
+	result, err := callListRepositories(context.Background(), server)
+	if err != nil {
+		t.Fatalf("call tool: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected tool error result")
+	}
+
+	var toolErr mcptools.ToolError
+	if err := json.Unmarshal([]byte(textFromResult(t, result)), &toolErr); err != nil {
+		t.Fatalf("unmarshal tool error: %v", err)
+	}
+	if toolErr.Code != mcptools.CodeUnauthorized {
+		t.Fatalf("code = %q, want %q", toolErr.Code, mcptools.CodeUnauthorized)
 	}
 }
 
