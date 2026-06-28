@@ -1,0 +1,13 @@
+# Binaries
+/bin/
+/server
+/client
+*.exe
+
+# Environment and secrets
+.env
+*.token
+.gh-int-demo-token
+
+# Go
+/vendor/
