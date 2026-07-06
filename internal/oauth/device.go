@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	deviceCodeURL        = "https://github.com/login/device/code"
+	deviceCodeURL          = "https://github.com/login/device/code"
 	githubTokenExchangeURL = "https://github.com/login/oauth/access_token" //nolint:gosec // public OAuth endpoint, not a secret
 )
 
