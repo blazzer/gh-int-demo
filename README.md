@@ -1,7 +1,6 @@
 # gh-int-demo
 
 ![CI](https://github.com/blazzer/gh-int-demo/actions/workflows/ci.yml/badge.svg)
-![Deploy](https://github.com/blazzer/gh-int-demo/actions/workflows/deploy.yml/badge.svg)
 
 ## What this is
 
@@ -21,7 +20,7 @@ CLI client (cmd/client)
 
 **Local interactive demo:** the client obtains *your* token via device flow and sends it to the server as `Authorization: Bearer`. The server uses that token to call GitHub on your behalf.
 
-**Deployed demo (Fly.io):** the server can run with a fixed `GITHUB_TOKEN` secret as a fallback. Reviewers can hit `/healthz` without authenticating.
+**Server-only fallback:** optionally set `GITHUB_TOKEN` on the server so MCP tools can call GitHub without a client Bearer token (useful for quick demos and integration tests).
 
 ### Identity model
 
@@ -29,7 +28,7 @@ CLI client (cmd/client)
 flowchart TD
     Client[CLI client] -->|Bearer user token| MCP[MCP server]
     MCP -->|per-request Lister| GitHub[GitHub API]
-    Fly[Fly.io fallback] -->|GITHUB_TOKEN env| MCP
+    Env[GITHUB_TOKEN env] -.->|optional fallback| MCP
 ```
 
 - **`AUTH_MODE=permissive`** (default): MCP accepts Bearer tokens or falls back to `GITHUB_TOKEN`.
@@ -71,7 +70,8 @@ Flags: `--no-cache` skips writing `~/.gh-int-demo-token` (write-only demo cache;
 
 ## Live deployment
 
-- **App:** `gh-int-demo` on [Fly.io](https://fly.io)
+Deployment is **manual** — CI does not publish the app. The repo includes `fly.toml` and a `Dockerfile` for [Fly.io](https://fly.io); deploy when you are ready.
+
 - **Health check:** `GET /healthz` → `{"status":"ok","version":"...","commit":"<git-sha>"}`
 - **MCP endpoint:** `POST /mcp` (streamable HTTP transport)
 
@@ -81,9 +81,10 @@ Flags: `--no-cache` skips writing `~/.gh-int-demo-token` (write-only demo cache;
 fly auth login
 fly launch --no-deploy --name gh-int-demo --copy-config
 fly secrets set GITHUB_TOKEN=ghp_your_demo_token   # optional fallback for MCP without Bearer
+fly deploy
 ```
 
-Add `FLY_API_TOKEN` to GitHub repository secrets. Pushes to `main` run CI, deploy via Fly, and smoke-test `/healthz` against the live commit SHA.
+To **automate** deploys on push to `main`, add [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) (see [`.github/workflows/deploy.yml.backup`](.github/workflows/deploy.yml.backup) for a starting point) and set the `FLY_API_TOKEN` repository secret.
 
 ## Hardening choices
 
@@ -111,10 +112,12 @@ Add `FLY_API_TOKEN` to GitHub repository secrets. Pushes to `main` run CI, deplo
 - **Token lifecycle:** refresh/rotation instead of long-lived PATs on the server
 - **Multi-user auth:** full OAuth 2.1 resource server instead of shared secrets
 - **Observability:** Prometheus/Grafana and distributed tracing beyond expvar + structured logs
-- **Secret management:** vault/KMS-backed secrets with rotation, not Fly/env-only
+- **Secret management:** vault/KMS-backed secrets with rotation, not env-only config
 - **Rate-limit budgets:** per-caller quotas and circuit breaking upstream of GitHub
 
 ## Development
+
+Pushes to `main` run [CI](.github/workflows/ci.yml) (build, vet, tests, lint).
 
 ```bash
 go build ./...
