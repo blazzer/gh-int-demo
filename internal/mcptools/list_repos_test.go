@@ -121,14 +121,14 @@ func callListRepositories(ctx context.Context, server *mcp.Server) (*mcp.CallToo
 	if err != nil {
 		return nil, err
 	}
-	defer serverSession.Close()
+	defer func() { _ = serverSession.Close() }()
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
 	clientSession, err := client.Connect(ctx, clientTransport, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer clientSession.Close()
+	defer func() { _ = clientSession.Close() }()
 
 	return clientSession.CallTool(ctx, &mcp.CallToolParams{Name: "list_repositories"})
 }

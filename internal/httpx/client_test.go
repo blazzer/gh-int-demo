@@ -31,7 +31,10 @@ func TestDefaultClient_TimesOutOnSlowResponse(t *testing.T) {
 		t.Fatalf("NewRequest: %v", err)
 	}
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}

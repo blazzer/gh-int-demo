@@ -38,10 +38,10 @@ func TestDeviceFlow_Success(t *testing.T) {
 
 	var polls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/device/code":
+		switch r.URL.Path {
+		case "/device/code":
 			encodeDeviceCode(w)
-		case r.URL.Path == "/access_token":
+		case "/access_token":
 			if polls.Add(1) == 1 {
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": "authorization_pending"})
 			} else {
@@ -73,10 +73,10 @@ func TestDeviceFlow_SlowDown(t *testing.T) {
 
 	var polls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/device/code":
+		switch r.URL.Path {
+		case "/device/code":
 			encodeDeviceCode(w)
-		case r.URL.Path == "/access_token":
+		case "/access_token":
 			switch polls.Add(1) {
 			case 1:
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": "slow_down"})

@@ -49,7 +49,7 @@ func TestEndToEnd_ListRepositories(t *testing.T) {
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_repositories"})
 	if err != nil {
@@ -113,7 +113,7 @@ func TestEndToEnd_BearerOverridesDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_repositories"})
 	if err != nil {

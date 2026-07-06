@@ -99,7 +99,7 @@ func connectMCPClient(t *testing.T, srvURL, bearerToken string) *mcp.ClientSessi
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	t.Cleanup(func() { session.Close() })
+	t.Cleanup(func() { _ = session.Close() })
 	return session
 }
 
@@ -119,7 +119,7 @@ func TestMCPInitializeHTTP(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	resp := postMCPInitialize(t, srv, "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -132,14 +132,14 @@ func TestMCP_RequireBearer(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	resp := postMCPInitialize(t, srv, "")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d, want 401; body = %s", resp.StatusCode, body)
 	}
 
 	resp2 := postMCPInitialize(t, srv, "test-token")
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	if resp2.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp2.Body)
 		t.Fatalf("status = %d, want 200; body = %s", resp2.StatusCode, body)

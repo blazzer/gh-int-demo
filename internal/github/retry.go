@@ -52,7 +52,7 @@ func withRetry(ctx context.Context, cfg retryConfig, fn func() (*http.Response, 
 		}
 
 		lastErr = &APIError{Status: resp.StatusCode, Message: "server error"}
-		resp.Body.Close()
+		closeResponseBody(resp)
 		if attempt+1 >= cfg.maxAttempts {
 			break
 		}
@@ -72,7 +72,7 @@ func backoffDelay(cfg retryConfig, attempt int) time.Duration {
 	if delay > cfg.maxDelay {
 		delay = cfg.maxDelay
 	}
-	jitter := time.Duration(rand.Int63n(int64(delay / 4)))
+	jitter := time.Duration(rand.Int63n(int64(delay / 4))) //nolint:gosec // retry backoff jitter, not cryptographic
 	return delay + jitter
 }
 

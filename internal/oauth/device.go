@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	deviceCodeURL  = "https://github.com/login/device/code"
-	accessTokenURL = "https://github.com/login/oauth/access_token"
+	deviceCodeURL        = "https://github.com/login/device/code"
+	githubTokenExchangeURL = "https://github.com/login/oauth/access_token" //nolint:gosec // public OAuth endpoint, not a secret
 )
 
 // Config holds GitHub OAuth device flow settings.
@@ -48,7 +48,7 @@ func DeviceFlow(ctx context.Context, cfg Config) (string, error) {
 		cfg.DeviceURL = deviceCodeURL
 	}
 	if cfg.TokenURL == "" {
-		cfg.TokenURL = accessTokenURL
+		cfg.TokenURL = githubTokenExchangeURL
 	}
 	if cfg.Output == nil {
 		cfg.Output = os.Stderr
@@ -59,7 +59,9 @@ func DeviceFlow(ctx context.Context, cfg Config) (string, error) {
 		return "", err
 	}
 
-	fmt.Fprintf(cfg.Output, "Visit %s and enter code: %s\n", device.VerificationURI, device.UserCode)
+	if _, err := fmt.Fprintf(cfg.Output, "Visit %s and enter code: %s\n", device.VerificationURI, device.UserCode); err != nil {
+		return "", err
+	}
 
 	interval := cfg.PollInterval
 	if interval == 0 {
@@ -127,7 +129,7 @@ func requestDeviceCode(ctx context.Context, cfg Config) (*deviceCodeResponse, er
 	if err != nil {
 		return nil, fmt.Errorf("oauth: request device code: %w", err)
 	}
-	defer resp.Body.Close()
+	defer closeOAuthBody(resp)
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
@@ -161,7 +163,7 @@ func pollAccessToken(ctx context.Context, cfg Config, deviceCode string) (token 
 	if err != nil {
 		return "", false, false, fmt.Errorf("oauth: poll token: %w", err)
 	}
-	defer resp.Body.Close()
+	defer closeOAuthBody(resp)
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
@@ -200,5 +202,11 @@ func sleep(ctx context.Context, d time.Duration) error {
 		return ctx.Err()
 	case <-timer.C:
 		return nil
+	}
+}
+
+func closeOAuthBody(resp *http.Response) {
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
 	}
 }

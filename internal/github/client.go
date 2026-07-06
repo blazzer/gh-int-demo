@@ -113,22 +113,22 @@ func (c *Client) fetchPage(ctx context.Context, url string) ([]Repository, strin
 
 		if statusCode == http.StatusUnauthorized {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-			resp.Body.Close()
+			closeResponseBody(resp)
 			return nil, "", statusCode, fmt.Errorf("%w: %s", ErrUnauthorized, strings.TrimSpace(string(body)))
 		}
 
 		if statusCode == http.StatusForbidden || statusCode == http.StatusTooManyRequests {
 			if rateErr := handleRateLimit(ctx, resp); rateErr == nil {
-				resp.Body.Close()
+				closeResponseBody(resp)
 				continue
 			}
-			resp.Body.Close()
+			closeResponseBody(resp)
 			return nil, "", statusCode, ErrRateLimited
 		}
 
 		if statusCode != http.StatusOK {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-			resp.Body.Close()
+			closeResponseBody(resp)
 			return nil, "", statusCode, &APIError{
 				Status:  statusCode,
 				Message: strings.TrimSpace(string(body)),
@@ -137,7 +137,7 @@ func (c *Client) fetchPage(ctx context.Context, url string) ([]Repository, strin
 
 		var repos []Repository
 		if err := json.NewDecoder(resp.Body).Decode(&repos); err != nil {
-			resp.Body.Close()
+			closeResponseBody(resp)
 			return nil, "", statusCode, fmt.Errorf("github: decode repos: %w", err)
 		}
 		linkHeader := resp.Header.Get("Link")
@@ -146,7 +146,7 @@ func (c *Client) fetchPage(ctx context.Context, url string) ([]Repository, strin
 				logger.Debug("github response", "github_request_id", ghReqID, "request_id", obs.RequestIDFromContext(ctx))
 			}
 		}
-		resp.Body.Close()
+		closeResponseBody(resp)
 		return repos, linkHeader, statusCode, nil
 	}
 

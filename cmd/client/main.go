@@ -59,7 +59,7 @@ func main() {
 		logger.Error("connect failed", "error", err)
 		os.Exit(1)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_repositories"})
 	if err != nil {
@@ -109,10 +109,14 @@ func printRepositories(out io.Writer, payload string) error {
 	}
 
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tVISIBILITY\tDESCRIPTION\tURL")
+	if _, err := fmt.Fprintln(w, "NAME\tVISIBILITY\tDESCRIPTION\tURL"); err != nil {
+		return err
+	}
 	for _, repo := range repos {
 		desc := strings.ReplaceAll(repo.Description, "\n", " ")
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", repo.Name, repo.Visibility, desc, repo.URL)
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", repo.Name, repo.Visibility, desc, repo.URL); err != nil {
+			return err
+		}
 	}
 	return w.Flush()
 }

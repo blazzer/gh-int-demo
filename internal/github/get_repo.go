@@ -28,7 +28,7 @@ func (c *Client) GetRepository(ctx context.Context, owner, name string) (Reposit
 	if err != nil {
 		return Repository{}, err
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	if statusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
@@ -75,16 +75,16 @@ func (c *Client) doGET(ctx context.Context, reqURL string) (*http.Response, int,
 
 		if statusCode == http.StatusUnauthorized {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-			resp.Body.Close()
+			closeResponseBody(resp)
 			return nil, statusCode, fmt.Errorf("%w: %s", ErrUnauthorized, strings.TrimSpace(string(body)))
 		}
 
 		if statusCode == http.StatusForbidden || statusCode == http.StatusTooManyRequests {
 			if rateErr := handleRateLimit(ctx, resp); rateErr == nil {
-				resp.Body.Close()
+				closeResponseBody(resp)
 				continue
 			}
-			resp.Body.Close()
+			closeResponseBody(resp)
 			return nil, statusCode, ErrRateLimited
 		}
 
